@@ -11,6 +11,7 @@ class Evaluation {
 public:
     //Create evaluation function
     float eval(StockDory::Board board) {
+        std::cout << "Board Copy Constructor Called" << std::endl;
         int random = rand();
         auto result = (float)(-5 + random % (11));
         return result;
