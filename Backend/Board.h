@@ -80,8 +80,8 @@ namespace StockDory
             bool hasBlackCastledQueenside = false;
 
         public:
-            Board() : Board("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1") {}
-            //Board() : Board("rnbqkbnr/pppppppp/8/8/3P4/8/PPP1PPPP/RNBQKBNR b KQkq d3 0 1") {}
+            //Board() : Board("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1") {}
+            Board() : Board("2k5/6RP/8/8/8/8/8/4K3 w - - 5 3") {}
 
             // Constructor that initializes the board with a given FEN
             explicit Board(const std::string& fen)
