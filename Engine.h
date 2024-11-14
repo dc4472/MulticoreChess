@@ -11,8 +11,7 @@
 #include "Backend/Type/Color.h"
 #include "Evaluation.h"
 #include <utility>
-// #include <omp.h>
-
+#include <omp.h> // Uncommented to enable OpenMP
 
 #include "SimplifiedMoveList.h"
 
@@ -23,21 +22,21 @@ class Engine {
         float mateScore = 20000;
 
     public:
+        // Setter for number of threads
+        void setNumThreads(int threads) {
+            numThreads = threads;
+            omp_set_num_threads(numThreads);
+        }
+
         //minimax implementation
         std::pair<Move, float> minimax(StockDory::Board &chessBoard, int depth) {
             // Local variables
             Move bestMove;
             float bestScore;
 
-            // Debugging: Print current depth and player
-            //std::cout << "Minimax called at depth " << depth << " for player "
-            //        << (chessBoard.ColorToMove() == White ? "White" : "Black") << std::endl;
-
             // Base case
             if (depth == 0) {
                 float score = evaluation.eval(chessBoard);
-                // Debugging: Print evaluation score
-                //std::cout << "Depth 0 reached. Evaluation score: " << score << std::endl;
                 return std::make_pair(Move(), score);
             }
             // White's turn
@@ -57,8 +56,6 @@ class Engine {
                     Move nextMove = moveList[i];
                     Square from = nextMove.From();
                     Square to = nextMove.To();
-                    // Debugging: Print move being considered
-                    //std::cout << "White considering move: " << nextMove.ToString() << std::endl;
 
                     // Perform move
                     PreviousState prevState = chessBoard.Move<0>(from, to);
@@ -89,8 +86,6 @@ class Engine {
                     Move nextMove = moveList[i];
                     Square from = nextMove.From();
                     Square to = nextMove.To();
-                    // Debugging: Print move being considered
-                    //std::cout << "Black considering move: " << nextMove.ToString() << std::endl;
 
                     // Perform move
                     PreviousState prevState = chessBoard.Move<0>(from, to);
@@ -104,10 +99,6 @@ class Engine {
                     chessBoard.UndoMove<0>(prevState, from, to);
                 }
             }
-
-            // Debugging: Print best move and score at current depth
-            //std::cout << "Best move at depth " << depth << ": " << bestMove.ToString()
-            //        << " with score " << bestScore << std::endl;
 
             return std::make_pair(bestMove, bestScore);
         }
@@ -181,7 +172,6 @@ class Engine {
             }
             return std::make_pair(bestMove, bestScore);
         }
-
         template<Color color, int maxDepth>
         std::pair<std::array<Move, maxDepth>, float> alphaBetaNega(StockDory::Board &chessBoard, float alpha, float beta, int depth) {
             //local variable of best line and best score
@@ -220,7 +210,7 @@ class Engine {
                 //Perform move
                 PreviousState prevState = chessBoard.Move<0>(from, to, promotion);
                 std::pair<std::array<Move, maxDepth>, float> result = alphaBetaNega<Ocolor, maxDepth>(chessBoard, -beta, -alpha, depth-1);
-                //update if we found a better move for white
+                //update the score
                 result.second = -result.second;
                 if (bestScore < result.second) {
                     //create chess line with the current move as the head
@@ -288,7 +278,7 @@ class Engine {
                 return std::make_pair(bestLine, bestScore);
             }
             //run parallel threads to check the rest of the children
-#pragma omp parallel for num_threads(32) default(none) private(chessBoard, nextMove, from, to, prevState, result) shared(Ocolor, bestScore, bestLine, alpha, beta, bestLineSize)
+#pragma omp parallel for default(none) private(chessBoard, nextMove, from, to, prevState, result) shared(Ocolor, bestScore, bestLine, alpha, beta, bestLineSize)
             for (uint8_t i = 1; i < moveList.Count(); i++) {
                 Move nextMove = moveList[i];
                 Square from = nextMove.From();
@@ -301,21 +291,21 @@ class Engine {
                 chessBoard.UndoMove<0>(prevState, from, to);
 #pragma omp critical
                 {
-                if (bestScore < result.second) {
-                    bestScore = result.second;
-                    bestLine[0] = nextMove;
-                    //append result line to the current move
-                    bestLineSize = 1;
-                    for (int j = 0; j < depth - 1; j++) {
-                        bestLine[bestLineSize++] = result.first[j];
+                    if (bestScore < result.second) {
+                        bestScore = result.second;
+                        bestLine[0] = nextMove;
+                        //append result line to the current move
+                        bestLineSize = 1;
+                        for (int j = 0; j < depth - 1; j++) {
+                            bestLine[bestLineSize++] = result.first[j];
+                        }
                     }
-                }
-                if (result.second > alpha) {
-                    alpha = result.second;
-                    if (beta <= alpha) {
-                        break;
+                    if (result.second > alpha) {
+                        alpha = result.second;
+                        if (beta <= alpha) {
+                            // Early termination not possible inside parallel region
+                        }
                     }
-                }
                 }
             }
              return std::make_pair(bestLine, bestScore);
@@ -369,7 +359,7 @@ class Engine {
                 return std::make_pair(bestLine, bestScore);
             }
             //run the rest of the checks in parallel
-#pragma omp parallel for num_threads(32) default(none) private(chessBoard, nextMove, from, to, prevState, result) shared(Ocolor, bestScore, bestLine, bestLineSize, alpha, beta)
+#pragma omp parallel for default(none) private(chessBoard, nextMove, from, to, promotion, prevState, result) shared(Ocolor, bestScore, bestLine, bestLineSize, alpha, beta)
             for (uint8_t i = 1; i < moveList.Count(); i++) {
                 Move nextMove = moveList[i];
                 Square from = nextMove.From();
@@ -382,25 +372,26 @@ class Engine {
                 chessBoard.UndoMove<0>(prevState, from, to);
 #pragma omp critical
                 {
-                if (bestScore < result.second) {
-                    bestScore = result.second;
-                    bestLine[0] = nextMove;
-                    //append result line to the current move
-                    bestLineSize = 1;
-                    for (int j = 0; j < depth - 1; j++) {
-                        bestLine[bestLineSize++] = result.first[j];
+                    if (bestScore < result.second) {
+                        bestScore = result.second;
+                        bestLine[0] = nextMove;
+                        //append result line to the current move
+                        bestLineSize = 1;
+                        for (int j = 0; j < depth - 1; j++) {
+                            bestLine[bestLineSize++] = result.first[j];
+                        }
                     }
-                }
-                if (result.second > alpha) {
-                    alpha = result.second;
-                    if (beta <= alpha) {
-                        break;
+                    if (result.second > alpha) {
+                        alpha = result.second;
+                        if (beta <= alpha) {
+                            // Early termination not possible inside parallel region
+                        }
                     }
-                }
                 }
             }
              return std::make_pair(bestLine, bestScore);
         }
+
         //basic parallelAlphaBetaNega used for PVS
         template <Color color, int maxDepth>
         std::pair<std::array<Move, maxDepth>, float> parallelAlphaBetaNega(StockDory::Board chessBoard, float alpha, float beta, int depth) {
@@ -428,7 +419,7 @@ class Engine {
             constexpr enum Color Ocolor = Opposite(color);
             bestScore = -std::numeric_limits<float>::infinity();
 
-#pragma omp parallel for num_threads(32) default(none) private(chessBoard, nextMove, from, to, prevState, result) shared(Ocolor, bestScore, bestLine, alpha, beta)
+#pragma omp parallel for default(none) private(chessBoard, nextMove, from, to, promotion, prevState, result) shared(Ocolor, bestScore, bestLine, alpha, beta)
             for (uint8_t i = 0; i < moveList.Count(); i++) {
                 Move nextMove = moveList[i];
                 Square from = nextMove.From();
@@ -440,25 +431,84 @@ class Engine {
                 chessBoard.UndoMove<0>(prevState, from, to);
 #pragma omp critical
                 {
-                if (bestScore < result.second) {
-                    bestScore = result.second;
-                    bestLine[0] = nextMove;
-                    //append result line to the current move
-                    bestLineSize = 1;
-                    for (int j = 0; j < depth - 1; j++) {
-                        bestLine[bestLineSize++] = result.first[j];
+                    if (bestScore < result.second) {
+                        bestScore = result.second;
+                        bestLine[0] = nextMove;
+                        //append result line to the current move
+                        bestLineSize = 1;
+                        for (int j = 0; j < depth - 1; j++) {
+                            bestLine[bestLineSize++] = result.first[j];
+                        }
                     }
-                }
-                if (result.second > alpha) {
-                    alpha = result.second;
-                    if (beta <= alpha) {
-                        break;
+                    if (result.second > alpha) {
+                        alpha = result.second;
+                        if (beta <= alpha) {
+                            // Early termination not possible inside parallel region
+                        }
                     }
-                }
                 }
             }
              return std::make_pair(bestLine, bestScore);
         }
-};
 
+        // Function to count total number of possible move sequences up to a given depth
+        uint64_t countMoves(StockDory::Board &chessBoard, int depth) {
+            if (depth == 0) {
+                return 1; // Base case: single sequence (no move)
+            }
+
+            Color currentPlayer = chessBoard.ColorToMove();
+            uint64_t totalMoves = 0;
+
+            if (currentPlayer == White) {
+                const StockDory::SimplifiedMoveList<White> moveList(chessBoard);
+                
+                // If no legal moves, count as one (checkmate or stalemate)
+                if (moveList.Count() == 0) {
+                    return 1;
+                }
+
+                for (uint8_t i = 0; i < moveList.Count(); i++) {
+                    Move nextMove = moveList[i];
+                    Square from = nextMove.From();
+                    Square to = nextMove.To();
+
+                    // Perform move
+                    PreviousState prevState = chessBoard.Move<0>(from, to);
+                    
+                    // Recurse with depth-1
+                    totalMoves += countMoves(chessBoard, depth - 1);
+                    
+                    // Undo move
+                    chessBoard.UndoMove<0>(prevState, from, to);
+                }
+            }
+            else { // Black's turn
+                const StockDory::SimplifiedMoveList<Black> moveList(chessBoard);
+                
+                // If no legal moves, count as one (checkmate or stalemate)
+                if (moveList.Count() == 0) {
+                    return 1;
+                }
+
+                for (uint8_t i = 0; i < moveList.Count(); i++) {
+                    Move nextMove = moveList[i];
+                    Square from = nextMove.From();
+                    Square to = nextMove.To();
+
+                    // Perform move
+                    PreviousState prevState = chessBoard.Move<0>(from, to);
+                    
+                    // Recurse with depth-1
+                    totalMoves += countMoves(chessBoard, depth - 1);
+                    
+                    // Undo move
+                    chessBoard.UndoMove<0>(prevState, from, to);
+                }
+            }
+
+            return totalMoves;
+        }
+};
 #endif //ENGINE_H
+

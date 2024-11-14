@@ -3,13 +3,16 @@
 #include <limits>
 #include <string>
 #include <cstdlib> // For std::atoi
+#include <chrono>  // For timing
+#include <iomanip> // For std::setw and std::fixed
+#include <vector>  // For std::vector
 #include "Backend/Board.h"         // Include Board.h for chess board representation
 #include "Backend/Type/Square.h"   // Include Square.h to use the Square enum
 #include "SimplifiedMoveList.h"    // Include your SimplifiedMoveList class
 #include "Backend/Type/Color.h"
 #include "Engine.h"                // Include your Engine class
 
-constexpr int maxDepth = 25;
+constexpr int maxDepth = 25; // Adjust as needed
 
 // Function to convert a Square enum to its string representation (e.g., E2 -> "e2")
 std::string squareToString(Square square) {
@@ -26,11 +29,162 @@ void printUsage(const std::string &programName) {
 
 // Function to display the algorithm options list
 void displayAlgorithmOptions() {
-    std::cout << "Choose Search Algorithm:\n";
+    std::cout << "Choose an option:\n";
     std::cout << "1. Young Brothers Wait Concept (YBWC)\n";
     std::cout << "2. Principal Variation Search (PVS)\n";
     std::cout << "3. Parallel Alpha-Beta Nega\n";
-    std::cout << "Enter your choice (1, 2, or 3): ";
+    std::cout << "4. Run Performance Tests\n"; // Option 4 for testing
+    std::cout << "5. Count Total Possible Move Sequences\n"; // Option 5 for move counting
+    std::cout << "Enter your choice (1, 2, 3, 4, or 5): ";
+}
+
+// Function to run performance tests
+void runPerformanceTests(int depth) {
+    // Initialize the engine
+    Engine engine;
+
+    // Prompt the user for a FEN for testing
+    std::string testFEN;
+    while (true) {
+        std::cout << "Enter the FEN string to use for performance tests (or press Enter to use the default test position): ";
+        std::getline(std::cin, testFEN);
+
+        if (testFEN.empty()) {
+            // Use the default test position
+            testFEN = "8/K7/7r/8/2k5/5bb1/8/8 b - - 0 1";
+            std::cout << "Using default test position.\n";
+        }
+
+        try {
+            // Initialize a test chess board
+            StockDory::Board testBoard;
+            testBoard.SetFEN(testFEN);
+            break; // Successfully set FEN
+        }
+        catch (const std::exception& e) {
+            std::cerr << "Failed to set FEN: " << e.what() << "\n";
+            std::cout << "Please enter a valid FEN string.\n";
+        }
+    }
+
+    // After validating the FEN, set up the test board
+    StockDory::Board testBoard;
+    try {
+        testBoard.SetFEN(testFEN);
+    }
+    catch (const std::exception& e) {
+        // This should not happen as we have already validated the FEN
+        std::cerr << "Unexpected error setting FEN: " << e.what() << "\n";
+        return;
+    }
+
+    // Define the thread counts to test
+    std::vector<int> threadCounts = {1, 2, 5, 10, 25, 32, 50}; // Adjust thread counts as needed
+
+    // Define the algorithms to test
+    enum Algorithm { YBWC_ALGO = 1, PVS_ALGO, PARALLEL_ALPHA_BETA_NEGA_ALGO };
+    std::vector<Algorithm> algorithms = {YBWC_ALGO, PVS_ALGO, PARALLEL_ALPHA_BETA_NEGA_ALGO};
+
+    // Define algorithm names for display
+    std::vector<std::string> algorithmNames = {
+        "Young Brothers Wait Concept (YBWC)",
+        "Principal Variation Search (PVS)",
+        "Parallel Alpha-Beta Nega"
+    };
+
+    // Header for the results table
+    std::cout << "\nPerformance Testing Results:\n";
+    std::cout << "--------------------------------------------------------------\n";
+    std::cout << "| Algorithm                     | Threads | Time (s)          |\n";
+    std::cout << "--------------------------------------------------------------\n";
+
+    // Iterate through each algorithm
+    for (size_t algoIdx = 0; algoIdx < algorithms.size(); ++algoIdx) {
+        Algorithm algo = algorithms[algoIdx];
+        std::string algoName = algorithmNames[algoIdx];
+
+        // Iterate through each thread count
+        for (const auto& threads : threadCounts) {
+            // Set the number of threads in the engine
+            engine.setNumThreads(threads);
+
+            // Initialize a fresh chess board for each run to ensure consistency
+            StockDory::Board runBoard;
+            try {
+                runBoard.SetFEN(testFEN);
+            }
+            catch (const std::exception& e) {
+                std::cerr << "Error setting FEN for performance test: " << e.what() << "\n";
+                continue; // Skip this run
+            }
+
+            // Start timing
+            auto start = std::chrono::high_resolution_clock::now();
+
+            // Execute the chosen algorithm
+            if (algo == YBWC_ALGO) {
+                // Execute YBWC
+                auto result = engine.YBWC<White, maxDepth>(
+                    runBoard,
+                    -std::numeric_limits<float>::infinity(),
+                    std::numeric_limits<float>::infinity(),
+                    depth
+                );
+                // You can optionally store or verify the result
+            }
+            else if (algo == PVS_ALGO) {
+                // Execute PVS
+                auto result = engine.PVS<White, maxDepth>(
+                    runBoard,
+                    -std::numeric_limits<float>::infinity(),
+                    std::numeric_limits<float>::infinity(),
+                    depth
+                );
+                // You can optionally store or verify the result
+            }
+            else if (algo == PARALLEL_ALPHA_BETA_NEGA_ALGO) {
+                // Execute Parallel Alpha-Beta Nega
+                auto result = engine.parallelAlphaBetaNega<White, maxDepth>(
+                    runBoard,
+                    -std::numeric_limits<float>::infinity(),
+                    std::numeric_limits<float>::infinity(),
+                    depth
+                );
+                // You can optionally store or verify the result
+            }
+
+            // End timing
+            auto end = std::chrono::high_resolution_clock::now();
+            std::chrono::duration<double> elapsed = end - start;
+
+            // Output the result in the table
+            std::cout << "| " << std::left << std::setw(28) << algoName
+                      << " | " << std::right << std::setw(7) << threads
+                      << " | " << std::fixed << std::setw(16) << std::setprecision(4) << elapsed.count()
+                      << " |\n";
+        }
+    }
+
+    std::cout << "--------------------------------------------------------------\n\n";
+}
+
+// Function to count total possible move sequences
+void countTotalMoves(Engine &engine, StockDory::Board &chessBoard, int depth) {
+    std::cout << "Counting total possible move sequences up to depth " << depth << "...\n";
+
+    // Start timing
+    auto start = std::chrono::high_resolution_clock::now();
+
+    // Count the moves
+    uint64_t totalMoveSequences = engine.countMoves(chessBoard, depth);
+
+    // End timing
+    auto end = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> elapsed = end - start;
+
+    // Display the result
+    std::cout << "Total possible move sequences up to depth " << depth << ": " << totalMoveSequences << "\n";
+    std::cout << "Time taken: " << std::fixed << std::setprecision(4) << elapsed.count() << " seconds.\n\n";
 }
 
 int main(int argc, char* argv[]) {
@@ -51,6 +205,9 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
+    // Initialize the engine
+    Engine engine;
+
     // Display algorithm options and get user choice
     int algorithmChoice = 0;
     while (true) {
@@ -61,19 +218,77 @@ int main(int argc, char* argv[]) {
         if (std::cin.fail()) {
             std::cin.clear(); // Clear the error flags
             std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n'); // Discard invalid input
-            std::cerr << "Invalid input. Please enter 1, 2, or 3.\n";
+            std::cerr << "Invalid input. Please enter 1, 2, 3, 4, or 5.\n";
             continue;
         }
 
-        if (algorithmChoice == 1 || algorithmChoice == 2 || algorithmChoice == 3) {
+        if (algorithmChoice >= 1 && algorithmChoice <= 5) {
             break; // Valid choice
         } else {
-            std::cerr << "Invalid choice: " << algorithmChoice << ". Please enter 1, 2, or 3.\n";
+            std::cerr << "Invalid choice: " << algorithmChoice << ". Please enter 1, 2, 3, 4, or 5.\n";
         }
     }
 
     // Clear the newline character left in the input buffer
     std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+
+    // Handle the user's choice
+    if (algorithmChoice == 4) { // Run Performance Tests
+        std::cout << "Running Performance Tests...\n";
+        runPerformanceTests(depth);
+        return 0; // Exit after testing
+    }
+    else if (algorithmChoice == 5) { // Count Total Possible Move Sequences
+        // Initialize the chess board
+        StockDory::Board chessBoard;
+
+        // Prompt the user to input the initial FEN
+        std::string initialFEN;
+        while (true) {
+            std::cout << "Enter the initial FEN string (or press Enter to use the standard starting position): ";
+            std::getline(std::cin, initialFEN);
+
+            if (initialFEN.empty()) {
+                // Use the standard starting position
+                initialFEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+                std::cout << "Using standard starting position.\n";
+            }
+
+            try {
+                chessBoard.SetFEN(initialFEN);
+                break; // Successfully set FEN
+            }
+            catch (const std::exception& e) {
+                std::cerr << "Failed to set FEN: " << e.what() << "\n";
+                std::cout << "Please enter a valid FEN string.\n";
+            }
+        }
+
+        // Count and display the total move sequences
+        countTotalMoves(engine, chessBoard, depth);
+
+        return 0; // Exit after counting
+    }
+
+    // If the user chose a parallel algorithm, prompt for the number of threads
+    if (algorithmChoice >= 1 && algorithmChoice <= 3) {
+        int threadCount;
+        while (true) {
+            std::cout << "Enter the number of threads to use for parallel algorithms: ";
+            std::cin >> threadCount;
+            if (std::cin.fail() || threadCount <= 0) {
+                std::cin.clear(); // Clear the error flags
+                std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n'); // Discard invalid input
+                std::cerr << "Invalid thread count. Please enter a positive integer.\n";
+                continue;
+            } else {
+                engine.setNumThreads(threadCount);
+                break; // Valid thread count entered
+            }
+        }
+        // Clear the newline character left in the input buffer
+        std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+    }
 
     // Map the choice to algorithm name
     std::string algorithmName;
@@ -95,11 +310,30 @@ int main(int argc, char* argv[]) {
 
     std::cout << "Starting " << algorithmName << " with depth: " << depth << "\n\n";
 
-    // Initialize the chess board with the standard starting position
+    // Initialize the chess board
     StockDory::Board chessBoard;
 
-    // Initialize the engine
-    Engine engine;
+    // Prompt the user to input the initial FEN
+    std::string initialFEN;
+    while (true) {
+        std::cout << "Enter the initial FEN string (or press Enter to use the standard starting position): ";
+        std::getline(std::cin, initialFEN);
+
+        if (initialFEN.empty()) {
+            // Use the standard starting position
+            initialFEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+            std::cout << "Using standard starting position.\n";
+        }
+
+        try {
+            chessBoard.SetFEN(initialFEN);
+            break; // Successfully set FEN
+        }
+        catch (const std::exception& e) {
+            std::cerr << "Failed to set FEN: " << e.what() << "\n";
+            std::cout << "Please enter a valid FEN string.\n";
+        }
+    }
 
     // Main game loop
     while (true) {
@@ -127,8 +361,7 @@ int main(int argc, char* argv[]) {
                     depth
                 );
 
-                // Check if there is at least one move in the sequence
-                // Since std::array doesn't have an empty() method, we assume the first move is valid
+                // Extract the best move
                 Move bestMove = result.first[0];
                 std::cout << "White's Best Move (YBWC): "
                           << squareToString(bestMove.From()) << " to "
@@ -167,7 +400,7 @@ int main(int argc, char* argv[]) {
                     depth
                 );
 
-                // Check if there is at least one move in the sequence
+                // Extract the best move
                 Move bestMove = result.first[0];
                 std::cout << "Black's Best Move (YBWC): "
                           << squareToString(bestMove.From()) << " to "
@@ -207,6 +440,7 @@ int main(int argc, char* argv[]) {
                     depth
                 );
 
+                // Extract the best move
                 Move bestMove = result.first[0];
                 std::cout << "White's Best Move (PVS): "
                           << squareToString(bestMove.From()) << " to "
@@ -244,6 +478,7 @@ int main(int argc, char* argv[]) {
                     depth
                 );
 
+                // Extract the best move
                 Move bestMove = result.first[0];
                 std::cout << "Black's Best Move (PVS): "
                           << squareToString(bestMove.From()) << " to "
@@ -283,6 +518,7 @@ int main(int argc, char* argv[]) {
                     depth
                 );
 
+                // Extract the best move
                 Move bestMove = result.first[0];
                 std::cout << "White's Best Move (Parallel Alpha-Beta Nega): "
                           << squareToString(bestMove.From()) << " to "
@@ -320,6 +556,7 @@ int main(int argc, char* argv[]) {
                     depth
                 );
 
+                // Extract the best move
                 Move bestMove = result.first[0];
                 std::cout << "Black's Best Move (Parallel Alpha-Beta Nega): "
                           << squareToString(bestMove.From()) << " to "
@@ -379,6 +616,8 @@ int main(int argc, char* argv[]) {
 
         // Continue the main game loop
     }
+
+    // If the user chose a parallel algorithm, the main loop has already been handled above.
 
     return 0;
 }

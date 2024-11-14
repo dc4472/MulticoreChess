@@ -1,0 +1,3 @@
+/home/sz4972/MulticoreChess/Build/CMakeFiles/MulticoreChess.dir
+/home/sz4972/MulticoreChess/Build/CMakeFiles/edit_cache.dir
+/home/sz4972/MulticoreChess/Build/CMakeFiles/rebuild_cache.dir

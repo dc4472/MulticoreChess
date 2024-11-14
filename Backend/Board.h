@@ -81,7 +81,7 @@ namespace StockDory
 
         public:
             //Board() : Board("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1") {}
-            Board() : Board("2k5/6RP/8/8/8/8/8/4K3 w - - 5 3") {}
+            Board() : Board("k7/3K4/3N4/2N5/8/3B4/8/8 w - - 0 1") {}
 
             // Constructor that initializes the board with a given FEN
             explicit Board(const std::string& fen)
