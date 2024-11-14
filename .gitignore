@@ -7,3 +7,7 @@ main.exe
 
 # Ignore CMake build directory
 cmake-build-debug/
+
+#Ignore Cmake cache and other stuff
+Build/CmakeCache.txt
+Build/cmake.check_cache
