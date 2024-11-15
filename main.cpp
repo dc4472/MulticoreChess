@@ -30,7 +30,8 @@ void displayAlgorithmOptions() {
     std::cout << "1. Young Brothers Wait Concept (YBWC)\n";
     std::cout << "2. Principal Variation Search (PVS)\n";
     std::cout << "3. Parallel Alpha-Beta Nega\n";
-    std::cout << "Enter your choice (1, 2, or 3): ";
+    std::cout << "4. YBWC with work stealing\n";
+    std::cout << "Enter your choice (1, 2, 3, or 4): ";
 }
 
 int main(int argc, char* argv[]) {
@@ -86,6 +87,9 @@ int main(int argc, char* argv[]) {
             break;
         case 3:
             algorithmName = "Parallel Alpha-Beta Nega";
+            break;
+        case 4:
+            algorithmName = "YBWC with work stealing (Feldman's version)";
             break;
         default:
             // This case should never occur due to the earlier validation
@@ -348,6 +352,84 @@ int main(int argc, char* argv[]) {
                 }
             }
         }
+
+        else if (algorithmChoice == 4) { // YBWC with Work Stealing (Feldman's version)
+            if (currentPlayer == White) {
+                std::cout << "Performing YBWC with Work Stealing for White...\n";
+                // Perform YBWCWS for White
+                result = engine.YBWCWS<White, maxDepth>(
+                    chessBoard,
+                    -std::numeric_limits<float>::infinity(),
+                    std::numeric_limits<float>::infinity(),
+                    depth
+                );
+
+                Move bestMove = result.first[0];
+                std::cout << "White's Best Move (YBWCWS): "
+                        << squareToString(bestMove.From()) << " to "
+                        << squareToString(bestMove.To())
+                        << " with score " << result.second << "\n";
+
+                // Print the entire sequence of moves (best line)
+                std::cout << "Best Line: ";
+                for (const Move &move : result.first) {
+                    if (move.From() == move.To()) {
+                        break;
+                    }
+                    std::cout << squareToString(move.From()) << " to "
+                            << squareToString(move.To()) << ", ";
+                }
+                std::cout << "\n";
+
+                // Execute the move on the board using the existing Move<0> method
+                try {
+                    chessBoard.Move<0>(bestMove.From(), bestMove.To());
+                    std::cout << "Move executed successfully.\n";
+                }
+                catch (const std::exception& e) {
+                    std::cerr << "Error executing move: " << e.what() << "\n";
+                    return 1;
+                }
+            }
+            else if (currentPlayer == Black) {
+                std::cout << "Performing YBWC with Work Stealing for Black...\n";
+                // Perform YBWCWS for Black
+                result = engine.YBWCWS<Black, maxDepth>(
+                    chessBoard,
+                    -std::numeric_limits<float>::infinity(),
+                    std::numeric_limits<float>::infinity(),
+                    depth
+                );
+
+                Move bestMove = result.first[0];
+                std::cout << "Black's Best Move (YBWCWS): "
+                        << squareToString(bestMove.From()) << " to "
+                        << squareToString(bestMove.To())
+                        << " with score " << result.second << "\n";
+
+                // Print the entire sequence of moves (best line)
+                std::cout << "Best Line: ";
+                for (const Move &move : result.first) {
+                    if (move.From() == move.To()) {
+                        break;
+                    }
+                    std::cout << squareToString(move.From()) << " to "
+                            << squareToString(move.To()) << ", ";
+                }
+                std::cout << "\n";
+
+                // Execute the move on the board using the existing Move<0> method
+                try {
+                    chessBoard.Move<0>(bestMove.From(), bestMove.To());
+                    std::cout << "Move executed successfully.\n";
+                }
+                catch (const std::exception& e) {
+                    std::cerr << "Error executing move: " << e.what() << "\n";
+                    return 1;
+                }
+            }
+        }
+
 
         // Display the updated board state
         std::cout << "\nUpdated FEN: " << chessBoard.Fen() << "\n";
