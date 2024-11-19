@@ -488,6 +488,7 @@ class Engine {
         constexpr enum Color Ocolor = Opposite(color);
         bestScore = -std::numeric_limits<float>::infinity();
 
+        // testing
         // Process the principal variation (PV) first - leftmost child
         Move PV = moveList[0];
         Square from = PV.From();
