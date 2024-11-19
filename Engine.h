@@ -460,75 +460,117 @@ class Engine {
              return std::make_pair(bestLine, bestScore);
         }
 
-        template<Color color, int maxDepth>
-        std::pair<std::array<Move, maxDepth>, float> YBWCWS(StockDory::Board chessBoard, float alpha, float beta, int depth) {
-            
-            std::array<Move, maxDepth> bestLine;
-        float bestScore;
-        int bestLineSize;
-        const StockDory::SimplifiedMoveList<color> moveList(chessBoard);
+       
+    template<Color color, int maxDepth>
+std::pair<std::array<Move, maxDepth>, float> YBWCWS(StockDory::Board chessBoard, float alpha, float beta, int depth) {
+    std::array<Move, maxDepth> bestLine;
+    float bestScore;
+    int bestLineSize = 0;
 
-        // Check for checkmate or stalemate
-        if (moveList.Count() == 0 && chessBoard.Checked<color>()) {
-            return std::make_pair(std::array<Move, maxDepth>(), -mateScore - depth);
-        }
-        else if (moveList.Count() == 0) {
-            return std::make_pair(std::array<Move, maxDepth>(), 0);
-        }
+    const StockDory::SimplifiedMoveList<color> moveList(chessBoard);
+    int numMoves = moveList.Count();
 
-        // Base case: evaluate the position if depth is 0
-        if (depth == 0) {
-            float score = evaluation.eval(chessBoard);
-            if (color == Black) {
-                score *= -1;
+    // Check for checkmate or stalemate
+    if (numMoves == 0 && chessBoard.Checked<color>()) {
+        return std::make_pair(std::array<Move, maxDepth>(), -mateScore - depth);
+    } else if (numMoves == 0) {
+        return std::make_pair(std::array<Move, maxDepth>(), 0);
+    }
+
+    // Base case: evaluate the position if depth is 0
+    if (depth == 0) {
+        float score = evaluation.eval(chessBoard);
+        if (color == Black) {
+            score *= -1;
+        }
+        return std::make_pair(std::array<Move, maxDepth>(), score);
+    }
+
+    constexpr enum Color Ocolor = Opposite(color);
+    bestScore = -std::numeric_limits<float>::infinity();
+
+    // Process the principal variation (PV) first - leftmost child
+    Move PV = moveList[0];
+    Square from = PV.From();
+    Square to = PV.To();
+    PreviousState prevState = chessBoard.Move<0>(from, to);
+    std::pair<std::array<Move, maxDepth>, float> result = YBWCWS<Ocolor, maxDepth>(chessBoard, -beta, -alpha, depth - 1);
+    result.second = -result.second;
+
+    if (bestScore < result.second) {
+        bestScore = result.second;
+        bestLine[0] = PV;
+        bestLineSize = 1;
+        for (int j = 0; j < depth - 1; j++) {
+            bestLine[bestLineSize++] = result.first[j];
+        }
+    }
+
+    chessBoard.UndoMove<0>(prevState, from, to);
+    alpha = std::max(alpha, result.second);
+    if (beta <= alpha) {
+        return std::make_pair(bestLine, bestScore);
+    }
+
+    // Create a work queue for each thread
+    int numThreads = omp_get_max_threads();
+    std::vector<std::queue<Move>> workQueues(numThreads);
+
+    // Populate work queues with remaining moves
+    for (int i = 1; i < numMoves; i++) {
+        workQueues[i % numThreads].push(moveList[i]);
+    }
+
+    // Parallel region with work stealing
+    #pragma omp parallel num_threads(numThreads) default(none) shared(chessBoard, workQueues, alpha, beta, bestScore, bestLine, bestLineSize, Ocolor, depth)
+    {
+        int threadId = omp_get_thread_num();
+        std::queue<Move> &localQueue = workQueues[threadId];
+
+        while (true) {
+            Move nextMove;
+            bool hasWork = false;
+
+            // Check if there is work in the local queue
+            if (!localQueue.empty()) {
+                nextMove = localQueue.front();
+                localQueue.pop();
+                hasWork = true;
+            } else {
+                // Try to steal work from other threads
+                for (int i = 0; i < numThreads; i++) {
+                    if (i == threadId) continue;
+                    if (!workQueues[i].empty()) {
+                        #pragma omp critical
+                        {
+                            if (!workQueues[i].empty()) {
+                                nextMove = workQueues[i].front();
+                                workQueues[i].pop();
+                                hasWork = true;
+                            }
+                        }
+                        if (hasWork) break;
+                    }
+                }
             }
-            return std::make_pair(std::array<Move, maxDepth>(), score);
-        }
 
-        constexpr enum Color Ocolor = Opposite(color);
-        bestScore = -std::numeric_limits<float>::infinity();
-
-        // testing
-        // Process the principal variation (PV) first - leftmost child
-        Move PV = moveList[0];
-        Square from = PV.From();
-        Square to = PV.To();
-        PreviousState prevState = chessBoard.Move<0>(from, to);
-        std::pair<std::array<Move, maxDepth>, float> result = YBWCWS<Ocolor, maxDepth>(chessBoard, -beta, -alpha, depth - 1);
-        result.second = -result.second;
-
-        if (bestScore < result.second) {
-            bestScore = result.second;
-            bestLine[0] = PV;
-            bestLineSize = 1;
-            for (int j = 0; j < depth - 1; j++) {
-                bestLine[bestLineSize++] = result.first[j];
+            // If no work is available, break the loop
+            if (!hasWork) {
+                break;
             }
-        }
-
-        chessBoard.UndoMove<0>(prevState, from, to);
-        alpha = std::max(alpha, result.second);
-        if (beta <= alpha) {
-            return std::make_pair(bestLine, bestScore);
-        }
-
-        // Parallel exploration of the remaining children using OpenMP with work stealing
-#pragma omp parallel for num_threads(numThreads) schedule(dynamic) default(none) shared(chessBoard, moveList, Ocolor, alpha, beta, bestScore, bestLine, bestLineSize) private(from, to, prevState, result)
-        for (uint8_t i = 1; i < moveList.Count(); i++) {
-            Move nextMove = moveList[i];
-            from = nextMove.From();
-            to = nextMove.To();
-            Piece promotion = nextMove.Promotion();
 
             // Perform the move
-            prevState = chessBoard.Move<0>(from, to, promotion);
-            result = YBWCWS<Ocolor, maxDepth>(chessBoard, -beta, -alpha, depth - 1);
+            Square from = nextMove.From();
+            Square to = nextMove.To();
+            Piece promotion = nextMove.Promotion();
+            PreviousState prevState = chessBoard.Move<0>(from, to, promotion);
+            std::pair<std::array<Move, maxDepth>, float> result = YBWCWS<Ocolor, maxDepth>(chessBoard, -beta, -alpha, depth - 1);
             result.second = -result.second;
 
             // Undo the move
             chessBoard.UndoMove<0>(prevState, from, to);
 
-#pragma omp critical
+            #pragma omp critical
             {
                 // Update the best score and line if we found a better move
                 if (bestScore < result.second) {
@@ -544,16 +586,18 @@ class Engine {
                 if (result.second > alpha) {
                     alpha = result.second;
                     if (beta <= alpha) {
-                        // Beta cutoff
-                        i = moveList.Count(); // Exit the loop
+                        // Beta cutoff: break out of the loop
+                        while (!localQueue.empty()) {
+                            localQueue.pop();
+                        }
                     }
                 }
             }
         }
+    }
 
-        return std::make_pair(bestLine, bestScore);
-
-        }
+    return std::make_pair(bestLine, bestScore);
+}
 };
 
 #endif //ENGINE_H
